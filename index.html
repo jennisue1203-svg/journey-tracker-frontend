@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Virtual Journey Tracker</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { margin: 0; padding: 0; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <script type="module">
+    import { html, render, Component } from 'https://unpkg.com/htm/preact/standalone.module.js';
+
+    // IMPORTANT: Replace this with your backend URL after deploying to Render
+    const API_URL = 'https://your-backend-url.onrender.com';
+
+    class JourneyTracker extends Component {
+      state = {
+        journeys: [],
+        selectedJourney: 0,
+        stepInput: '',
+        memberName: 'You',
+        showAddJourney: false,
+        newJourney: { name: '', miles: '' },
+        loading: true,
+        error: ''
+      };
+
+      componentDidMount() {
+        this.fetchJourneys();
+      }
+
+      fetchJourneys = async () => {
+        try {
+          this.setState({ loading: true });
+          const response = await fetch(`${API_URL}/api/journeys`);
+          const data = await response.json();
+          this.setState({ journeys: data, loading: false });
+        } catch (err) {
+          this.setState({ error: 'Failed to load journeys', loading: false });
+        }
+      };
+
+      addSteps = async () => {
+        const steps = parseInt(this.state.stepInput);
+        if (steps && steps > 0) {
+          try {
+            const journey = this.state.journeys[this.state.selectedJourney];
+            const response = await fetch(`${API_URL}/api/journeys/${journey.id}/steps`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ steps, memberName: this.state.memberName })
+            });
+            
+            if (response.ok) {
+              await this.fetchJourneys();
+              this.setState({ stepInput: '' });
+            }
+          } catch (err) {
+            this.setState({ error: 'Failed to add steps' });
+          }
+        }
+      };
+
+      createJourney = async () => {
+        const { name, miles } = this.state.newJourney;
+        if (name && miles) {
+          try {
+            const response = await fetch(`${API_URL}/api/journeys`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                name,
+                totalMiles: parseFloat(miles),
+                members: ["You", "Husband"]
+              })
+            });
+            
+            if (response.ok) {
+              await this.fetchJourneys();
+              this.setState({ 
+                newJourney: { name: '', miles: '' },
+                showAddJourney: false 
+              });
+            }
+          } catch (err) {
+            this.setState({ error: 'Failed to create journey' });
+          }
+        }
+      };
+
+      render() {
+        const { journeys, selectedJourney, stepInput, memberName, showAddJourney, newJourney, loading, error } = this.state;
+
+        if (loading) {
+          return html`
+            <div class="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
+              <div class="text-blue-400 text-xl">Loading...</div>
+            </div>
+          `;
+        }
+
+        if (journeys.length === 0) {
+          return html`
+            <div class="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 flex items-center justify-center">
+              <div class="text-center">
+                <div class="text-6xl mb-4">🏔️</div>
+                <h2 class="text-2xl font-bold text-white mb-2">No journeys yet!</h2>
+                <p class="text-slate-300 mb-4">Create your first journey to get started.</p>
+                <button
+                  onClick=${() => this.setState({ showAddJourney: true })}
+                  class="px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-700 text-white font-semibold rounded-lg"
+                >
+                  Create Journey
+                </button>
+              </div>
+            </div>
+          `;
+        }
+
+        const journey = journeys[selectedJourney];
+        const progress = (journey.currentSteps / journey.totalSteps) * 100;
+        const milesCompleted = (journey.currentSteps / 2100).toFixed(1);
+        const milesRemaining = (journey.totalMiles - milesCompleted).toFixed(1);
+
+        return html`
+          <div class="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 md:p-8">
+            <div class="max-w-4xl mx-auto">
+              <!-- Header -->
+              <div class="text-center mb-8">
+                <div class="flex items-center justify-center gap-3 mb-2">
+                  <span class="text-5xl">🏔️</span>
+                  <h1 class="text-4xl font-bold text-white">Virtual Journey Tracker</h1>
+                </div>
+                <p class="text-slate-300">Walk the world together, one step at a time</p>
+              </div>
+
+              ${error && html`
+                <div class="mb-4 p-4 bg-red-500/20 border border-red-500 rounded-lg text-red-200">
+                  ${error}
+                </div>
+              `}
+
+              <!-- Journey Selector -->
+              <div class="mb-6 flex gap-2 flex-wrap">
+                ${journeys.map((j, idx) => html`
+                  <button
+                    key=${j.id}
+                    onClick=${() => this.setState({ selectedJourney: idx })}
+                    class="px-4 py-2 rounded-lg font-semibold transition-all ${
+                      selectedJourney === idx
+                        ? 'bg-gradient-to-r from-blue-500 to-blue-700 text-white'
+                        : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                    }"
+                  >
+                    ${j.name}
+                  </button>
+                `)}
+                <button
+                  onClick=${() => this.setState({ showAddJourney: !showAddJourney })}
+                  class="px-4 py-2 rounded-lg bg-slate-700 text-slate-300 hover:bg-slate-600 transition-all"
+                >
+                  ➕ New Journey
+                </button>
+              </div>
+
+              <!-- Add Journey Form -->
+              ${showAddJourney && html`
+                <div class="bg-slate-800 rounded-xl p-6 mb-6 border border-slate-700">
+                  <h3 class="text-xl font-semibold text-white mb-4">Create New Journey</h3>
+                  <div class="grid md:grid-cols-2 gap-4 mb-4">
+                    <input
+                      type="text"
+                      placeholder="Journey name (e.g., Route 66)"
+                      value=${newJourney.name}
+                      onInput=${(e) => this.setState({ newJourney: { ...newJourney, name: e.target.value }})}
+                      class="px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <input
+                      type="number"
+                      placeholder="Total miles"
+                      value=${newJourney.miles}
+                      onInput=${(e) => this.setState({ newJourney: { ...newJourney, miles: e.target.value }})}
+                      class="px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <button
+                    onClick=${this.createJourney}
+                    class="w-full py-3 bg-gradient-to-r from-blue-500 to-blue-700 text-white font-semibold rounded-lg hover:from-blue-600 hover:to-blue-800 transition-all"
+                  >
+                    Create Journey
+                  </button>
+                </div>
+              `}
+
+              <!-- Main Card -->
+              <div class="bg-slate-800 rounded-2xl shadow-2xl overflow-hidden border border-slate-700">
+                <!-- Journey Header -->
+                <div class="bg-gradient-to-r from-blue-500 to-blue-700 p-6 text-white">
+                  <div class="flex items-center justify-between mb-2">
+                    <h2 class="text-3xl font-bold">${journey.name}</h2>
+                    <span class="text-3xl">👥</span>
+                  </div>
+                  <p class="text-white/90">Team: ${journey.members.join(" & ")}</p>
+                </div>
+
+                <!-- Progress Section -->
+                <div class="p-6">
+                  <div class="mb-6">
+                    <div class="flex justify-between items-center mb-2">
+                      <span class="text-slate-300 font-semibold">Progress</span>
+                      <span class="text-2xl font-bold text-blue-400">${progress.toFixed(1)}%</span>
+                    </div>
+                    <div class="w-full bg-slate-700 rounded-full h-6 overflow-hidden">
+                      <div
+                        class="h-full bg-gradient-to-r from-blue-500 to-blue-700 transition-all duration-500 ease-out flex items-center justify-end pr-2"
+                        style="width: ${Math.min(progress, 100)}%"
+                      >
+                        ${progress > 5 && html`<span class="text-white text-xs font-bold">🚶</span>`}
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Stats Grid -->
+                  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <div class="bg-slate-700 rounded-lg p-4">
+                      <div class="text-slate-400 text-sm mb-1">Miles Done</div>
+                      <div class="text-2xl font-bold text-white">${milesCompleted}</div>
+                    </div>
+                    <div class="bg-slate-700 rounded-lg p-4">
+                      <div class="text-slate-400 text-sm mb-1">Miles Left</div>
+                      <div class="text-2xl font-bold text-white">${milesRemaining}</div>
+                    </div>
+                    <div class="bg-slate-700 rounded-lg p-4">
+                      <div class="text-slate-400 text-sm mb-1">Total Steps</div>
+                      <div class="text-xl font-bold text-white">${journey.currentSteps.toLocaleString()}</div>
+                    </div>
+                    <div class="bg-slate-700 rounded-lg p-4">
+                      <div class="text-slate-400 text-sm mb-1">Goal</div>
+                      <div class="text-xl font-bold text-white">${journey.totalMiles} mi</div>
+                    </div>
+                  </div>
+
+                  <!-- Add Steps Section -->
+                  <div class="bg-slate-700 rounded-xl p-6">
+                    <h3 class="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+                      📈 Add Today's Steps
+                    </h3>
+                    <div class="grid md:grid-cols-3 gap-4">
+                      <select
+                        value=${memberName}
+                        onChange=${(e) => this.setState({ memberName: e.target.value })}
+                        class="px-4 py-3 bg-slate-600 border border-slate-500 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        ${journey.members.map(m => html`<option key=${m} value=${m}>${m}</option>`)}
+                      </select>
+                      <input
+                        type="number"
+                        placeholder="Enter steps"
+                        value=${stepInput}
+                        onInput=${(e) => this.setState({ stepInput: e.target.value })}
+                        onKeyPress=${(e) => e.key === 'Enter' && this.addSteps()}
+                        class="px-4 py-3 bg-slate-600 border border-slate-500 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <button
+                        onClick=${this.addSteps}
+                        class="py-3 bg-gradient-to-r from-blue-500 to-blue-700 text-white font-semibold rounded-lg hover:from-blue-600 hover:to-blue-800 transition-all"
+                      >
+                        ➕ Add Steps
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Achievement -->
+                  ${progress >= 100 && html`
+                    <div class="mt-6 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-xl p-6 text-center">
+                      <div class="text-6xl mb-2">🏆</div>
+                      <h3 class="text-2xl font-bold text-white mb-2">Journey Complete! 🎉</h3>
+                      <p class="text-white/90">You've walked the entire ${journey.name}!</p>
+                    </div>
+                  `}
+                </div>
+              </div>
+
+              <!-- Refresh Button -->
+              <div class="mt-4 text-center">
+                <button
+                  onClick=${this.fetchJourneys}
+                  class="text-slate-400 hover:text-slate-200 transition-colors"
+                >
+                  🔄 Refresh Data
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    render(html`<${JourneyTracker} />`, document.getElementById('app'));
+  </script>
+</body>
+</html>
